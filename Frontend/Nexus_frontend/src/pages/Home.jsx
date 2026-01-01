@@ -138,14 +138,14 @@ const Home = () => {
       <div className="fixed bottom-20 right-10 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse pointer-events-none" style={{ animationDelay: '1s' }} />
 
       {/* Navigation - UPDATED LOGO HERE */}
-      <nav className="fixed top-0 left-0 right-0 z-50 h-16 bg-card/80 backdrop-blur-xl border-b border-border">
+     <nav className="fixed top-0 left-0 right-0 z-50 h-16 bg-[#0b1020] border-b border-white/10">
         <div className="h-full max-w-7xl mx-auto px-6 flex items-center justify-between">
           <div className="flex items-center group cursor-pointer" onClick={() => navigate('/')}>
             <div className="relative">
               <img
                 src="/nexus_logo.jpeg"  // ← Change to "/logo.svg" if using SVG
                 alt="Your Platform Logo"
-                className="h-10 w-auto transition-all duration-300 group-hover:scale-110"
+                className="h-14 w-auto transition-all duration-300 group-hover:scale-110"
               />
               {/* Optional pulsing dot for style */}
               <div className="absolute -top-1 -right-1 w-3 h-3 bg-accent rounded-full animate-pulse" />
@@ -353,7 +353,7 @@ const Home = () => {
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-3">
               <img
-                src="/logo.png"  // ← Same logo as nav
+                src="/nexus_logo.jpeg"  // ← Same logo as nav
                 alt="Your Platform Logo"
                 className="h-10 w-auto object-contain"
               />
