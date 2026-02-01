@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Base API instance for all requests
 const axiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000', // ✅ removed /api
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -12,7 +12,6 @@ const axiosInstance = axios.create({
 // Request interceptor for adding auth tokens, logging, etc.
 axiosInstance.interceptors.request.use(
   (config) => {
-    // Add auth token if available
     const token = localStorage.getItem('auth_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -28,7 +27,6 @@ axiosInstance.interceptors.request.use(
 axiosInstance.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Handle common errors
     if (error.response) {
       switch (error.response.status) {
         case 401:
