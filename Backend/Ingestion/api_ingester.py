@@ -1,6 +1,6 @@
 import requests
 from typing import Dict, Any, Union
-from Backend.app.config import get_settings
+# from Backend.app.config import get_settings
 
 settings = get_settings()
 
