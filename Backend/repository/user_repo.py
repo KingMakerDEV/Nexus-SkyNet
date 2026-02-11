@@ -13,3 +13,7 @@ def create_user(name, email, password):
     db.session.commit()
 
     return user  # ✅ IMPORTANT
+
+
+def get_user_by_id(id):
+    return User.query.filter_by(id=id).first()

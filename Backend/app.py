@@ -12,7 +12,9 @@ def create_app():
 
     db.init_app(app)
 
-    CORS(app, supports_credentials=True)
+    CORS(app, supports_credentials=True,
+         methods=["POST", "GET", "OPTIONS", "DELETE", "PUT", "PATCH"],
+         allow_headers=["Content-Type", "Authorization", "Access-Token"],)
 
     app.register_blueprint(auth_bp, url_prefix="/auth")
 
