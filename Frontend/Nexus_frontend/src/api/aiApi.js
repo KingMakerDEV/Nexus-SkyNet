@@ -52,3 +52,4 @@ export const askAI = async (question, context = {}) => {
 export const getDiscoveryHistory = async (limit = 10) => {
   return axiosInstance.get('/ai/history', { params: { limit } });
 };
+

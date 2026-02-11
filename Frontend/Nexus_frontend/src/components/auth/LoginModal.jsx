@@ -17,10 +17,14 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// ✅ NEW
+import { loginUser, registerUser } from '@/api/authApi';
+
 const LoginModal = ({ isOpen, onClose, onSuccess }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -47,15 +51,40 @@ const LoginModal = ({ isOpen, onClose, onSuccess }) => {
 
   if (!isOpen) return null;
 
+  // ✅ UPDATED: real backend call
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    
-    // Simulate authentication
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    setIsLoading(false);
-    onSuccess?.();
+
+    try {
+      let res;
+
+      if (isLogin) {
+        // 🔵 LOGIN
+        res = await loginUser({
+          email: formData.email,
+          password: formData.password,
+        });
+      } else {
+        // 🔵 SIGNUP
+        res = await registerUser({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+        });
+      }
+
+      console.log("Auth Success:", res.data);
+
+      onSuccess?.(res.data);
+      onClose();
+
+    } catch (err) {
+      console.error("Auth Error:", err.response?.data || err.message);
+      alert(err.response?.data?.error || "Authentication failed");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleChange = (e) => {
