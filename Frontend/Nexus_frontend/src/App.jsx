@@ -13,6 +13,7 @@ import CompareDatasets from "./pages/CompareDatasets";
 import Analytics from "./pages/Analytics";
 import AIDiscovery from "./pages/AIDiscovery";
 import NotFound from "./pages/NotFound";
+import { AuthProvider } from './context/AuthContext';
 
 const queryClient = new QueryClient();
 
@@ -47,21 +48,23 @@ const AppLayout = ({ children }) => {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AppLayout>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/upload" element={<UploadData />} />
-            <Route path="/datasets" element={<DatasetExplorer />} />
-            <Route path="/compare" element={<CompareDatasets />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/ai-discovery" element={<AIDiscovery />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AppLayout>
+      <BrowserRouter> {/* BrowserRouter should be inside providers but before components that use router hooks */}
+        <AuthProvider> {/* AuthProvider should wrap everything that needs auth */}
+          <Toaster />
+          <Sonner />
+          <AppLayout>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/upload" element={<UploadData />} />
+              <Route path="/datasets" element={<DatasetExplorer />} />
+              <Route path="/compare" element={<CompareDatasets />} />
+              <Route path="/analytics" element={<Analytics />} />
+              <Route path="/ai-discovery" element={<AIDiscovery />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AppLayout>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
