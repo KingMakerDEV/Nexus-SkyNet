@@ -12,7 +12,11 @@ def register_user(name, email, password):
 
     return {
         "message": "Registered successfully",
-        "user_id": user.id
+        "user": {  # Return full user object
+            "id": user.id,
+            "name": user.name,
+            "email": user.email
+        }
     }, 201
 
 
@@ -27,5 +31,9 @@ def login_user(email, password):
 
     return {
         "message": "Login success",
-        "user_id": user.id
+        "user": {  # ✅ Return full user object
+            "id": user.id,
+            "name": user.name,
+            "email": user.email
+        }
     }, 200
