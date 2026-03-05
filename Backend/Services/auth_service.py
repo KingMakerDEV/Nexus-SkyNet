@@ -14,8 +14,11 @@ def register_user(name, email, password):
 
     return {
         "message": "Registered successfully",
-        "token": token,
-        "user_id": user.id
+        "user": {  # Return full user object
+            "id": user.id,
+            "name": user.name,
+            "email": user.email
+        }
     }, 201
 
 
@@ -32,6 +35,15 @@ def login_user(email, password, remember=False):
 
     return {
         "message": "Login success",
+<<<<<<< HEAD
         "token": token,
         "user_id": user.id
     }, 200
+=======
+        "user": {  # ✅ Return full user object
+            "id": user.id,
+            "name": user.name,
+            "email": user.email
+        }
+    }, 200
+>>>>>>> 2acad6025d21a4e394f21fbafd06d690aa35cb3c

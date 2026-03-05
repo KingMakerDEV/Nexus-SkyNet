@@ -16,14 +16,14 @@ import {
   Circle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-
-// ✅ NEW
-import { loginUser, registerUser } from '@/api/authApi';
+import { loginUser, registerUser } from '@/api/authApi';  // ✅ Keep only ONE import
+import { useAuth } from '../../context/AuthContext';  // ✅ Add useAuth import
 
 const LoginModal = ({ isOpen, onClose, onSuccess }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const { login } = useAuth(); // Add this line
 
   const [formData, setFormData] = useState({
     name: '',
@@ -75,6 +75,23 @@ const LoginModal = ({ isOpen, onClose, onSuccess }) => {
       }
 
       console.log("Auth Success:", res.data);
+      
+      // ✅ Extract user data from response
+      // Based on your backend, the response structure might be different
+      // If your backend returns user data directly:
+      const userData = res.data.user || {
+        id: res.data.user_id,
+        name: formData.name || formData.email.split('@')[0],
+        email: formData.email
+      };
+
+      // Store user in AuthContext
+      login(userData);
+      
+      // Store token if your backend returns one
+      if (res.data.token) {
+        localStorage.setItem('auth_token', res.data.token);
+      }
 
       onSuccess?.(res.data);
       onClose();
