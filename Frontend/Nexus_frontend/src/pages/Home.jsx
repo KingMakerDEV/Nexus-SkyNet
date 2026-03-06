@@ -722,9 +722,8 @@ const Home = () => {
           </div>
         </div>
       </footer>
-
-      <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} onSuccess={() => navigate('/dashboard')} />
-    </div>
+       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} onSuccess={() => navigate('/upload')} />
+      </div>
   );
 };
 
