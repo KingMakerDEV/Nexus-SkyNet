@@ -15,18 +15,20 @@ import {
 } from 'lucide-react';
 
 const navItems = [
+   {
+    path: '/upload',
+    icon: Upload,
+    label: 'Upload Data',
+    description: 'Ingest new datasets',
+  },
+  
   {
     path: '/dashboard',
     icon: LayoutDashboard,
     label: 'Dashboard',
     description: 'Overview & metrics',
   },
-  {
-    path: '/upload',
-    icon: Upload,
-    label: 'Upload Data',
-    description: 'Ingest new datasets',
-  },
+ 
   {
     path: '/datasets',
     icon: Database,
