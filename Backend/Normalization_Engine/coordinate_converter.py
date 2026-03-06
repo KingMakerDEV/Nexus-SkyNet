@@ -1,35 +1,62 @@
-
-
+from typing import Dict, Any
 import math
-from typing import Tuple
 
 
 class CoordinateConverter:
     """
-    Handles coordinate system conversions.
+    Converts spatial coordinates into a unified reference system.
+
+    Supported inputs:
+    - Latitude / Longitude
+    - Right Ascension (RA) / Declination (Dec)
+
+    Output format:
+    - Normalized equatorial coordinates (ra_deg, dec_deg)
     """
 
-    @staticmethod
-    def latlon_to_cartesian(lat: float, lon: float, radius: float = 6371.0) -> Tuple[float, float, float]:
+    def convert_coordinates(self, record: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Convert latitude/longitude (degrees) to Cartesian coordinates (x, y, z).
-        Default radius = Earth's radius in km.
+        Detect coordinate format and normalize it.
         """
-        lat_rad = math.radians(lat)
-        lon_rad = math.radians(lon)
 
-        x = radius * math.cos(lat_rad) * math.cos(lon_rad)
-        y = radius * math.cos(lat_rad) * math.sin(lon_rad)
-        z = radius * math.sin(lat_rad)
+        # Case 1: Already RA / Dec
+        if "ra" in record and "dec" in record:
+            record["ra_deg"] = self._to_float(record["ra"])
+            record["dec_deg"] = self._to_float(record["dec"])
+            return record
 
-        return x, y, z
+        # Case 2: Latitude / Longitude
+        if "latitude" in record and "longitude" in record:
+            ra, dec = self._latlon_to_equatorial(
+                record["latitude"],
+                record["longitude"]
+            )
 
-    @staticmethod
-    def cartesian_to_latlon(x: float, y: float, z: float) -> Tuple[float, float]:
+            record["ra_deg"] = ra
+            record["dec_deg"] = dec
+
+        return record
+
+    def _latlon_to_equatorial(self, lat: Any, lon: Any):
         """
-        Convert Cartesian coordinates back to latitude/longitude (degrees).
+        Convert lat/lon to equatorial approximation.
         """
-        radius = math.sqrt(x**2 + y**2 + z**2)
-        lat = math.degrees(math.asin(z / radius))
-        lon = math.degrees(math.atan2(y, x))
-        return lat, lon
+
+        lat = self._to_float(lat)
+        lon = self._to_float(lon)
+
+        # simple placeholder conversion
+        ra = (lon % 360)
+        dec = lat
+
+        return ra, dec
+
+    def _to_float(self, value: Any) -> float:
+        """
+        Safely convert value to float.
+        """
+
+        try:
+            return float(value)
+        except Exception:
+            return 0.0

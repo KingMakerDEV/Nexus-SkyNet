@@ -1,49 +1,107 @@
-from repository.user_repo import get_user_by_email, create_user
-from werkzeug.security import generate_password_hash, check_password_hash
-from utils.jwt_helper import create_jwt_token
+import bcrypt
+from datetime import datetime
+
+from repository.user_repo import UserRepository
+from utils.jwt_helper import create_access_token, create_refresh_token
 
 
-def register_user(name, email, password):
-    if get_user_by_email(email):
-        return {"error": "Email already exists"}, 400
+class AuthService:
 
-    hashed = generate_password_hash(password)
-    user = create_user(name, email, hashed)
+    def __init__(self, db):
+        self.db = db
+        self.user_repo = UserRepository(db)
 
-    token = create_jwt_token(user.id, remember=False)
+    # -----------------------------
+    # SIGNUP
+    # -----------------------------
+    def signup(self, name: str, email: str, password: str):
 
-    return {
-        "message": "Registered successfully",
-        "user": {  # Return full user object
-            "id": user.id,
-            "name": user.name,
-            "email": user.email
+        existing_user = self.user_repo.get_user_by_email(email)
+
+        if existing_user:
+            raise Exception("User already exists")
+
+        hashed_password = bcrypt.hashpw(
+            password.encode("utf-8"),
+            bcrypt.gensalt()
+        ).decode("utf-8")
+
+        user = self.user_repo.create_user(
+            name=name,
+            email=email,
+            password=hashed_password
+        )
+
+        return {
+            "status": "success",
+            "message": "User created successfully",
+            "user": {
+                "id": str(user.id),
+                "name": user.name,
+                "email": user.email
+            }
         }
-    }, 201
 
+    # -----------------------------
+    # LOGIN
+    # -----------------------------
+    def login(self, email: str, password: str):
 
-def login_user(email, password, remember=False):
-    user = get_user_by_email(email)
+        user = self.user_repo.get_user_by_email(email)
 
-    if not user:
-        return {"error": "User not found"}, 404
+        if not user:
+            raise Exception("Invalid credentials")
 
-    if not check_password_hash(user.password, password):
-        return {"error": "Wrong password"}, 401
+        if not bcrypt.checkpw(
+            password.encode("utf-8"),
+            user.password.encode("utf-8")
+        ):
+            raise Exception("Invalid credentials")
 
-    token = create_jwt_token(user.id, remember)
+        access_token = create_access_token({
+            "user_id": str(user.id),
+            "role": user.role
+        })
 
-    return {
-        "message": "Login success",
-<<<<<<< HEAD
-        "token": token,
-        "user_id": user.id
-    }, 200
-=======
-        "user": {  # ✅ Return full user object
-            "id": user.id,
-            "name": user.name,
-            "email": user.email
+        refresh_token = create_refresh_token({
+            "user_id": str(user.id)
+        })
+
+        # store refresh token
+        self.user_repo.store_refresh_token(user.id, refresh_token)
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "user": {
+                "id": str(user.id),
+                "name": user.name,
+                "email": user.email,
+                "role": user.role
+            }
         }
-    }, 200
->>>>>>> 2acad6025d21a4e394f21fbafd06d690aa35cb3c
+
+    # -----------------------------
+    # LOGOUT
+    # -----------------------------
+    def logout(self, user_id):
+
+        self.user_repo.invalidate_refresh_token(user_id)
+
+    # -----------------------------
+    # GET USER
+    # -----------------------------
+    def get_user_by_id(self, user_id):
+
+        user = self.user_repo.get_user_by_id(user_id)
+
+        if not user:
+            raise Exception("User not found")
+
+        return {
+            "id": str(user.id),
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+            "created_at": user.created_at.isoformat() if user.created_at else None
+        }

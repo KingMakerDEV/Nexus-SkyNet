@@ -1,31 +1,55 @@
 import jwt
 from datetime import datetime, timedelta
-from app.config import Config
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 
-def create_jwt_token(user_id, remember=False):
+# -----------------------------
+# CREATE ACCESS TOKEN
+# -----------------------------
+def create_access_token(payload: dict):
 
-    if remember:
-        expire_time = datetime.utcnow() + timedelta(days=7)
-    else:
-        expire_time = datetime.utcnow() + timedelta(hours=24)
+    payload_copy = payload.copy()
 
-    payload = {
-        "user_id": str(user_id),   # ⭐ FIX HERE
-        "iat": datetime.utcnow(),
-        "exp": expire_time
-    }
+    payload_copy["exp"] = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
-    token = jwt.encode(payload, Config.SECRET_KEY, algorithm="HS256")
+    token = jwt.encode(payload_copy, SECRET_KEY, algorithm="HS256")
 
     return token
 
 
+# -----------------------------
+# CREATE REFRESH TOKEN
+# -----------------------------
+def create_refresh_token(payload: dict):
+
+    payload_copy = payload.copy()
+
+    payload_copy["exp"] = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+
+    token = jwt.encode(payload_copy, SECRET_KEY, algorithm="HS256")
+
+    return token
+
+
+# -----------------------------
+# VERIFY TOKEN
+# -----------------------------
 def verify_jwt_token(token):
+
     try:
-        payload = jwt.decode(token, Config.SECRET_KEY, algorithms=["HS256"])
-        return payload
+        decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return decoded
+
     except jwt.ExpiredSignatureError:
         return None
+
     except jwt.InvalidTokenError:
         return None

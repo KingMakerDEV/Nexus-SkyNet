@@ -1,85 +1,61 @@
+from datetime import datetime
+from typing import Dict, Any
 
-import uuid
-from typing import Dict, Any, List
-from sqlalchemy.orm import Session
-
-from Backend.repository.raw_repo import RawRepository
-from Backend.repository.normalized_repo import NormalizedRepository
-from Backend.repository.metadata_repo import MetadataRepository
-from Backend.Models.raw_dataset import RawDataset
-from Backend.Models.normalized_dataset import NormalizedDataset
-from Backend.Models.metadata import DatasetMetadata
-from Backend.Normalization_Engine.normalization_pipeline import NormalizationPipeline
+from Normalization_Engine.normalization_pipeline import NormalizationPipeline
+from repository.normalized_repo import NormalizedDatasetRepository
 
 
 class NormalizationService:
-    def __init__(self, db: Session):
+    """
+    Business logic layer for dataset normalization.
+
+    Responsibilities:
+    - Receive normalization requests from routes/services
+    - Execute normalization pipeline
+    - Attach metadata (who normalized, timestamp)
+    - Persist normalized dataset
+    """
+
+    def __init__(self, db):
         self.db = db
-        self.raw_repo = RawRepository(db)
-        self.normalized_repo = NormalizedRepository(db)
-        self.metadata_repo = MetadataRepository(db)
         self.pipeline = NormalizationPipeline(db)
+        self.normalized_repo = NormalizedDatasetRepository(db)
 
-    def normalize_dataset(self, raw_dataset_id: uuid.UUID) -> Dict[str, Any]:
+    # -------------------------------------------------------
+    # RUN NORMALIZATION
+    # -------------------------------------------------------
+
+    def run_pipeline(self, dataset_id: int, normalized_by: str = "system") -> Dict[str, Any]:
         """
-        Normalize a single raw dataset by ID.
-        Flow:
-        - Fetch raw dataset
-        - Run normalization pipeline
-        - Attach metadata
-        - Persist normalized output
-        - Mark raw dataset as processed
+        Run normalization pipeline for a raw dataset.
         """
-        raw_dataset: RawDataset = self.raw_repo.get_by_id(raw_dataset_id)
-        if not raw_dataset or raw_dataset.is_processed:
-            return {"status": "skipped", "reason": "Dataset not found or already processed"}
 
-        # Step 1: Run normalization pipeline
-        normalized: NormalizedDataset = self.pipeline.normalize_dataset(raw_dataset)
+        try:
+            result = self.pipeline.run(dataset_id)
 
-        # Step 2: Attach metadata
-        metadata = DatasetMetadata(
-            raw_dataset_id=raw_dataset.id,
-            normalized_dataset_id=normalized.id,
-            metadata_payload={
-                "normalization_version": normalized.normalization_version,
-                "source_id": raw_dataset.source_id,
-                "format": raw_dataset.format,
-            },
-        )
-        self.metadata_repo.create(metadata)
+            if result.get("status") != "success":
+                return result
 
-        # Step 3: Mark raw dataset as processed
-        self.raw_repo.mark_processed(raw_dataset.id)
+            normalized_dataset_id = result.get("normalized_dataset_id")
 
-        return {"status": "success", "normalized_dataset_id": str(normalized.id)}
+            # attach normalization metadata
+            self.normalized_repo.add_normalization_metadata(
+                dataset_id=normalized_dataset_id,
+                metadata={
+                    "normalized_by": normalized_by,
+                    "normalized_at": datetime.utcnow().isoformat(),
+                },
+            )
 
-    def normalize_all_pending(self) -> List[Dict[str, Any]]:
-        """
-        Normalize all unprocessed raw datasets.
-        Flow:
-        - Fetch unprocessed raw datasets
-        - Run normalization pipeline for each
-        - Attach metadata
-        - Persist normalized output
-        - Mark raw dataset as processed
-        """
-        results: List[Dict[str, Any]] = []
-        unprocessed: List[RawDataset] = [
-            ds for ds in self.raw_repo.get_all() if not ds.is_processed
-        ]
+            return {
+                "status": "success",
+                "normalized_dataset_id": normalized_dataset_id,
+                "records": result.get("records", 0),
+                "message": "Dataset normalized successfully",
+            }
 
-        for raw_dataset in unprocessed:
-            result = self.normalize_dataset(raw_dataset.id)
-            results.append(result)
-
-        return results
-
-
-# Utility function for ingestion_service to trigger normalization
-def trigger_normalization(db: Session, raw_dataset: RawDataset) -> None:
-    """
-    Trigger normalization for a single raw dataset.
-    """
-    service = NormalizationService(db)
-    service.normalize_dataset(raw_dataset.id)
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e),
+            }

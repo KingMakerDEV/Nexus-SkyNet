@@ -1,28 +1,18 @@
-
-import uuid
-from sqlalchemy import Column, String, TIMESTAMP, ForeignKey, ARRAY
-from sqlalchemy.dialects.postgresql import UUID
-from app.database import Base
+from datetime import datetime
+from app.extionsions import db
 
 
-class DatasetMetadata(Base):
+class Metadata(db.Model):
     __tablename__ = "dataset_metadata"
 
-    # Primary key
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(db.Integer, primary_key=True)
 
-    # Link back to raw dataset
-    raw_dataset_id = Column(UUID(as_uuid=True), ForeignKey("raw_datasets.id"))
+    dataset_id = db.Column(
+        db.Integer,
+        db.ForeignKey("raw_datasets.id"),
+        nullable=False
+    )
 
-    # Metadata fields
-    dataset_name = Column(String(255))
-    coordinate_system = Column(String(50))
-    unit_system = Column(String(50))
-    observation_time = Column(TIMESTAMP)
-    tags = Column(ARRAY(String))
+    meta_data = db.Column(db.JSON)
 
-    # Timestamp
-    created_at = Column(TIMESTAMP, server_default="CURRENT_TIMESTAMP")
-
-    def __repr__(self):
-        return f"<DatasetMetadata(id={self.id}, dataset_name={self.dataset_name}, coordinate_system={self.coordinate_system})>"
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

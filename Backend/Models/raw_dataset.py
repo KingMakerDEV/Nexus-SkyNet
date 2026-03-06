@@ -1,32 +1,18 @@
+from datetime import datetime
+from app.extionsions import db
 
 
-import uuid
-from sqlalchemy import Column, String, Boolean, TIMESTAMP, ForeignKey, Integer, JSON
-from sqlalchemy.dialects.postgresql import UUID
-from app.database import Base
-
-
-class RawDataset(Base):
+class RawDataset(db.Model):
     __tablename__ = "raw_datasets"
 
-    # Primary key
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(db.Integer, primary_key=True)
 
-    # Foreign keys
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    source_id = Column(Integer, ForeignKey("data_sources.id"))
+    user_id = db.Column(db.String(100), nullable=False)
 
-    # Raw payload from API or upload
-    raw_payload = Column(JSON, nullable=False)
+    source_id = db.Column(db.Integer, nullable=False)
 
-    # Format of the payload (JSON or CSV)
-    format = Column(String(20), nullable=False)
+    data = db.Column(db.JSON, nullable=False)
 
-    # Processing status
-    is_processed = Column(Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Timestamp of ingestion
-    ingested_at = Column(TIMESTAMP, server_default="CURRENT_TIMESTAMP")
-
-    def __repr__(self):
-        return f"<RawDataset(id={self.id}, format={self.format}, is_processed={self.is_processed})>"
+    updated_at = db.Column(db.DateTime, nullable=True)
