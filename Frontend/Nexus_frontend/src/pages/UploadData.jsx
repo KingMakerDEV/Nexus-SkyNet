@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { DataProcessingLoader } from '../components/common/Loader';
 import CoordinateViewer from '../components/visualization/CoordinateViewer';
+import { uploadDataFile, getIngestionStatus } from '../api/ingestionApi'; // Import API
+import { useNavigate } from 'react-router-dom'; // Import useNavigate
 
 const UploadData = () => {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -23,7 +25,9 @@ const UploadData = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [previewData, setPreviewData] = useState(null);
   const [error, setError] = useState(null);
+  const [jobId, setJobId] = useState(null);
   const fileInputRef = useRef(null);
+  const navigate = useNavigate(); // For redirecting to dashboard
 
   const sources = [
     { id: 'nasa', name: 'NASA', icon: '🚀', description: 'NASA Exoplanet Archive, MAST, etc.' },
@@ -64,12 +68,54 @@ const UploadData = () => {
     setPreviewData(null);
     setProcessingStep(-1);
     setUploadProgress(0);
+    setJobId(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
-  const simulateUpload = async () => {
+  // Poll ingestion status
+  const pollIngestionStatus = async (id) => {
+    try {
+      const response = await getIngestionStatus(id);
+      const status = response.data;
+      
+      // Update processing step based on status
+      if (status.step === 'uploading') setProcessingStep(0);
+      else if (status.step === 'validating') setProcessingStep(1);
+      else if (status.step === 'normalizing') setProcessingStep(2);
+      else if (status.step === 'storing') setProcessingStep(3);
+      
+      // Check if complete
+      if (status.status === 'completed') {
+        setProcessingStep(processingSteps.length);
+        setPreviewData(status.preview || {
+          totalRows: status.rowCount || 0,
+          columns: status.columns || [],
+          normalizedUnits: status.units || {},
+          sampleConversion: status.sample || {},
+        });
+        setIsProcessing(false);
+        
+        // Redirect to dashboard after 2 seconds
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 2000);
+      } else if (status.status === 'failed') {
+        setError(status.message || 'Ingestion failed');
+        setIsProcessing(false);
+      } else {
+        // Continue polling
+        setTimeout(() => pollIngestionStatus(id), 2000);
+      }
+    } catch (err) {
+      console.error('Error polling status:', err);
+      setError('Failed to get ingestion status');
+      setIsProcessing(false);
+    }
+  };
+
+  const startIngestion = async () => {
     if (!selectedFile || !selectedSource) {
       setError('Please select a file and data source');
       return;
@@ -77,37 +123,28 @@ const UploadData = () => {
 
     setIsProcessing(true);
     setError(null);
+    setProcessingStep(0);
 
-    // Simulate upload progress
-    for (let i = 0; i <= 100; i += 10) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      setUploadProgress(i);
+    try {
+      // Upload file with progress tracking
+      const response = await uploadDataFile(selectedFile, selectedSource, (progress) => {
+        setUploadProgress(progress);
+      });
+
+      // Get job ID from response
+      const { jobId: newJobId } = response.data;
+      setJobId(newJobId);
+
+      // Start polling for status
+      pollIngestionStatus(newJobId);
+
+    } catch (err) {
+      console.error('Upload error:', err);
+      setError(err.response?.data?.error || 'Upload failed. Please try again.');
+      setIsProcessing(false);
+      setProcessingStep(-1);
+      setUploadProgress(0);
     }
-
-    // Simulate processing steps
-    for (let step = 0; step < processingSteps.length; step++) {
-      setProcessingStep(step);
-      await new Promise(resolve => setTimeout(resolve, 1500));
-    }
-
-    // Simulate preview data
-    setPreviewData({
-      totalRows: 15847,
-      columns: ['object_id', 'ra', 'dec', 'magnitude', 'distance', 'spectral_type'],
-      normalizedUnits: {
-        ra: 'degrees (ICRS)',
-        dec: 'degrees (ICRS)',
-        distance: 'parsecs',
-        magnitude: 'apparent (V-band)',
-      },
-      sampleConversion: {
-        original: { ra: 83.822, dec: -5.391, epoch: 'J2015.5' },
-        normalized: { ra: 83.82208, dec: -5.39095, epoch: 'J2000.0' },
-      },
-    });
-
-    setProcessingStep(processingSteps.length);
-    setIsProcessing(false);
   };
 
   const formatFileSize = (bytes) => {
@@ -116,6 +153,10 @@ const UploadData = () => {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const goToDashboard = () => {
+    navigate('/dashboard');
   };
 
   return (
@@ -256,7 +297,7 @@ const UploadData = () => {
           </h3>
 
           {/* Progress bar */}
-          {uploadProgress < 100 && (
+          {uploadProgress < 100 && processingStep === 0 && (
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Uploading...</span>
@@ -277,7 +318,7 @@ const UploadData = () => {
           )}
 
           {/* Completion */}
-          {processingStep >= processingSteps.length && (
+          {processingStep >= processingSteps.length && previewData && (
             <div className="flex items-center gap-3 p-4 rounded-xl bg-green-500/10 border border-green-500/50">
               <CheckCircle2 className="w-5 h-5 text-green-500" />
               <div>
@@ -300,7 +341,7 @@ const UploadData = () => {
               Normalization Preview
             </h3>
             <span className="text-sm text-muted-foreground">
-              {previewData.totalRows.toLocaleString()} rows processed
+              {previewData.totalRows?.toLocaleString() || 0} rows processed
             </span>
           </div>
 
@@ -308,11 +349,11 @@ const UploadData = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="p-3 rounded-lg bg-muted/30">
               <p className="text-xs text-muted-foreground">Total Rows</p>
-              <p className="text-lg font-bold text-foreground">{previewData.totalRows.toLocaleString()}</p>
+              <p className="text-lg font-bold text-foreground">{previewData.totalRows?.toLocaleString() || 0}</p>
             </div>
             <div className="p-3 rounded-lg bg-muted/30">
               <p className="text-xs text-muted-foreground">Columns</p>
-              <p className="text-lg font-bold text-foreground">{previewData.columns.length}</p>
+              <p className="text-lg font-bold text-foreground">{previewData.columns?.length || 0}</p>
             </div>
             <div className="p-3 rounded-lg bg-muted/30">
               <p className="text-xs text-muted-foreground">Coordinate System</p>
@@ -325,58 +366,75 @@ const UploadData = () => {
           </div>
 
           {/* Coordinate conversion preview */}
-          <CoordinateViewer
-            originalCoords={previewData.sampleConversion.original}
-            normalizedCoords={previewData.sampleConversion.normalized}
-            coordinateSystem="ICRS"
-          />
+          {previewData.sampleConversion && (
+            <CoordinateViewer
+              originalCoords={previewData.sampleConversion.original || {}}
+              normalizedCoords={previewData.sampleConversion.normalized || {}}
+              coordinateSystem="ICRS"
+            />
+          )}
 
           {/* Normalized units */}
-          <div>
-            <h4 className="text-sm font-medium text-foreground mb-3">Normalized Units</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {Object.entries(previewData.normalizedUnits).map(([field, unit]) => (
-                <div key={field} className="p-3 rounded-lg bg-muted/20 border border-border">
-                  <p className="text-xs text-muted-foreground capitalize">{field}</p>
-                  <p className="text-sm text-foreground font-medium">{unit}</p>
-                </div>
-              ))}
+          {previewData.normalizedUnits && (
+            <div>
+              <h4 className="text-sm font-medium text-foreground mb-3">Normalized Units</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {Object.entries(previewData.normalizedUnits).map(([field, unit]) => (
+                  <div key={field} className="p-3 rounded-lg bg-muted/20 border border-border">
+                    <p className="text-xs text-muted-foreground capitalize">{field}</p>
+                    <p className="text-sm text-foreground font-medium">{unit}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
       {/* Action buttons */}
       <div className="flex justify-end gap-4">
-        <button
-          onClick={removeFile}
-          className="px-6 py-3 rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={simulateUpload}
-          disabled={!selectedFile || !selectedSource || isProcessing}
-          className={`
-            flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all
-            ${!selectedFile || !selectedSource || isProcessing
-              ? 'bg-muted text-muted-foreground cursor-not-allowed'
-              : 'bg-primary text-primary-foreground hover:bg-primary/90 glow-primary'
-            }
-          `}
-        >
-          {isProcessing ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Processing...
-            </>
-          ) : (
-            <>
-              <Rocket className="w-5 h-5" />
-              Start Ingestion
-            </>
-          )}
-        </button>
+        {processingStep >= processingSteps.length ? (
+          <button
+            onClick={goToDashboard}
+            className="flex items-center gap-2 px-6 py-3 rounded-lg font-medium bg-primary text-primary-foreground hover:bg-primary/90 glow-primary transition-all"
+          >
+            <ArrowRight className="w-5 h-5" />
+            Go to Dashboard
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={removeFile}
+              disabled={isProcessing}
+              className="px-6 py-3 rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={startIngestion}
+              disabled={!selectedFile || !selectedSource || isProcessing}
+              className={`
+                flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all
+                ${!selectedFile || !selectedSource || isProcessing
+                  ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                  : 'bg-primary text-primary-foreground hover:bg-primary/90 glow-primary'
+                }
+              `}
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Rocket className="w-5 h-5" />
+                  Start Ingestion
+                </>
+              )}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
