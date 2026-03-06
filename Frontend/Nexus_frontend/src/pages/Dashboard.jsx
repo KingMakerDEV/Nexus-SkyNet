@@ -19,6 +19,10 @@ import { motion } from 'framer-motion';
 import LineChart from '../components/charts/LineChart';
 import BarChart from '../components/charts/BarChart';
 import SkyMap from '../components/visualization/SkyMap';
+import { getIngestionMetrics } from '../api/analyticsApi'; // Import API
+import { getSourceDistribution } from '../api/analyticsApi';
+import { getDatasets } from '../api/datasetApi';
+import { getIngestionHistory } from '../api/ingestionApi';
 
 // Import Lenis
 import Lenis from 'lenis';
@@ -112,7 +116,7 @@ const SpaceBackground = () => {
 };
 
 // Animated stat card component
-const StatCard = ({ icon: Icon, title, value, change, changeType, color }) => (
+const StatCard = ({ icon: Icon, title, value, change, changeType, color, isLoading }) => (
   <motion.div 
     className="glass-hover rounded-xl p-5 hover-lift border border-white/10 relative overflow-hidden group"
     initial={{ opacity: 0, y: 20 }}
@@ -143,7 +147,11 @@ const StatCard = ({ icon: Icon, title, value, change, changeType, color }) => (
       </div>
       <div className="mt-4">
         <p className="text-sm text-muted-foreground group-hover:text-white/80 transition-colors">{title}</p>
-        <p className="text-2xl font-bold text-foreground mt-1 group-hover:text-white transition-colors">{value}</p>
+        {isLoading ? (
+          <div className="h-7 w-20 bg-white/10 rounded animate-pulse mt-1" />
+        ) : (
+          <p className="text-2xl font-bold text-foreground mt-1 group-hover:text-white transition-colors">{value}</p>
+        )}
       </div>
     </div>
   </motion.div>
@@ -186,6 +194,18 @@ const ActivityItem = ({ status, title, time, source }) => {
 
 const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalDatasets: '0',
+    normalized: '0',
+    sources: '0',
+    objectsProcessed: '0',
+  });
+  const [ingestionData, setIngestionData] = useState([]);
+  const [sourceData, setSourceData] = useState([]);
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [pipelineStages, setPipelineStages] = useState([]);
+  const [loadingStats, setLoadingStats] = useState(true);
+  const [timeRange, setTimeRange] = useState('7d');
 
   // Initialize Lenis smooth scrolling
   useEffect(() => {
@@ -215,40 +235,108 @@ const Dashboard = () => {
     };
   }, []);
 
-  // Sample data for charts
-  const ingestionData = [
-    { name: 'Mon', datasets: 45, objects: 12400 },
-    { name: 'Tue', datasets: 52, objects: 15600 },
-    { name: 'Wed', datasets: 38, objects: 9800 },
-    { name: 'Thu', datasets: 65, objects: 21000 },
-    { name: 'Fri', datasets: 58, objects: 18500 },
-    { name: 'Sat', datasets: 42, objects: 13200 },
-    { name: 'Sun', datasets: 47, objects: 14800 },
-  ];
+  // Fetch dashboard data
+  const fetchDashboardData = async () => {
+    setLoadingStats(true);
+    try {
+      // Fetch datasets to get total count
+      const datasetsRes = await getDatasets();
+      const datasets = datasetsRes.data || [];
+      
+      // Fetch ingestion metrics
+      const metricsRes = await getIngestionMetrics(timeRange);
+      const metrics = metricsRes.data || {};
+      
+      // Fetch source distribution
+      const sourcesRes = await getSourceDistribution();
+      const sources = sourcesRes.data || [];
+      
+      // Fetch recent ingestion history
+      const historyRes = await getIngestionHistory({ limit: 5 });
+      const history = historyRes.data || [];
 
-  const sourceData = [
-    { name: 'NASA', count: 4521, color: '#3B82F6' },
-    { name: 'ESA', count: 3842, color: '#8B5CF6' },
-    { name: 'Hubble', count: 2156, color: '#F59E0B' },
-    { name: 'JWST', count: 1823, color: '#EF4444' },
-    { name: 'Gaia', count: 1547, color: '#EC4899' },
-    { name: 'Other', count: 982, color: '#10B981' },
-  ];
+      // Update stats
+      setStats({
+        totalDatasets: datasets.length?.toLocaleString() || '0',
+        normalized: datasets.filter(d => d.status === 'normalized').length?.toLocaleString() || '0',
+        sources: sources.length?.toString() || '0',
+        objectsProcessed: datasets.reduce((acc, d) => acc + (d.objectCount || 0), 0).toLocaleString() || '0',
+      });
 
-  const recentActivity = [
-    { status: 'completed', title: 'Andromeda Galaxy Dataset', source: 'NASA Exoplanet Archive', time: '2m ago' },
-    { status: 'processing', title: 'Gaia DR3 Star Catalog', source: 'ESA Gaia Mission', time: '5m ago' },
-    { status: 'completed', title: 'JWST Deep Field Observation', source: 'James Webb Space Telescope', time: '12m ago' },
-    { status: 'failed', title: 'Chandra X-ray Data', source: 'NASA Chandra Observatory', time: '25m ago' },
-    { status: 'completed', title: 'Hubble Legacy Field', source: 'Hubble Space Telescope', time: '1h ago' },
-  ];
+      // Update ingestion chart data
+      setIngestionData(metrics.ingestionTrends || []);
+      
+      // Update source distribution data
+      setSourceData(sources.map(s => ({
+        name: s.name,
+        count: s.count,
+        color: getSourceColor(s.name),
+      })));
 
-  const pipelineStages = [
-    { stage: 'Ingestion', count: 23, status: 'active', color: 'from-blue-500 to-cyan-500' },
-    { stage: 'Validation', count: 18, status: 'active', color: 'from-green-500 to-emerald-500' },
-    { stage: 'Normalization', count: 45, status: 'active', color: 'from-purple-500 to-pink-500' },
-    { stage: 'Storage', count: 12, status: 'active', color: 'from-orange-500 to-amber-500' },
-  ];
+      // Update recent activity
+      setRecentActivity(history.map(item => ({
+        status: item.status || 'completed',
+        title: item.datasetName || 'Unknown Dataset',
+        source: item.source || 'Unknown Source',
+        time: formatTimeAgo(item.createdAt),
+      })));
+
+      // Update pipeline stages
+      setPipelineStages([
+        { stage: 'Ingestion', count: metrics.ingestionQueue || 0, status: 'active', color: 'from-blue-500 to-cyan-500' },
+        { stage: 'Validation', count: metrics.validationQueue || 0, status: 'active', color: 'from-green-500 to-emerald-500' },
+        { stage: 'Normalization', count: metrics.normalizationQueue || 0, status: 'active', color: 'from-purple-500 to-pink-500' },
+        { stage: 'Storage', count: metrics.storageQueue || 0, status: 'active', color: 'from-orange-500 to-amber-500' },
+      ]);
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  // Helper function to get source colors
+  const getSourceColor = (sourceName) => {
+    const colors = {
+      'NASA': '#3B82F6',
+      'ESA': '#8B5CF6',
+      'Hubble': '#F59E0B',
+      'JWST': '#EF4444',
+      'Gaia': '#EC4899',
+      'Other': '#10B981',
+    };
+    return colors[sourceName] || '#10B981';
+  };
+
+  // Helper function to format time ago
+  const formatTimeAgo = (timestamp) => {
+    if (!timestamp) return 'Unknown';
+    const now = new Date();
+    const past = new Date(timestamp);
+    const diffMs = now - past;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
+  };
+
+  // Load data on mount and when timeRange changes
+  useEffect(() => {
+    fetchDashboardData();
+  }, [timeRange]);
+
+  const handleRefresh = () => {
+    fetchDashboardData();
+  };
+
+  const handleTimeRangeChange = (range) => {
+    setTimeRange(range);
+  };
 
   return (
     <>
@@ -283,20 +371,23 @@ const Dashboard = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <motion.button 
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-white transition-all border border-white/10"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+            <select
+              value={timeRange}
+              onChange={(e) => handleTimeRangeChange(e.target.value)}
+              className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-muted-foreground hover:text-white transition-all focus:outline-none focus:border-primary"
             >
-              <Clock className="w-4 h-4" />
-              <span className="text-sm">Last 7 days</span>
-            </motion.button>
+              <option value="24h">Last 24 hours</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+              <option value="90d">Last 90 days</option>
+            </select>
             <motion.button 
+              onClick={handleRefresh}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-primary to-secondary text-white hover:opacity-90 transition-all glow-primary"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className={`w-4 h-4 ${loadingStats ? 'animate-spin' : ''}`} />
               <span className="text-sm">Refresh Data</span>
             </motion.button>
           </div>
@@ -312,34 +403,38 @@ const Dashboard = () => {
           <StatCard
             icon={Database}
             title="Total Datasets"
-            value="14,871"
+            value={stats.totalDatasets}
             change="+12.5%"
             changeType="increase"
             color="from-blue-500 to-cyan-500"
+            isLoading={loadingStats}
           />
           <StatCard
             icon={CheckCircle2}
             title="Normalized"
-            value="13,642"
+            value={stats.normalized}
             change="+8.2%"
             changeType="increase"
             color="from-green-500 to-emerald-500"
+            isLoading={loadingStats}
           />
           <StatCard
             icon={Globe}
             title="Connected Sources"
-            value="12"
+            value={stats.sources}
             change="+2"
             changeType="increase"
             color="from-purple-500 to-pink-500"
+            isLoading={loadingStats}
           />
           <StatCard
             icon={Zap}
             title="Objects Processed"
-            value="5.2M"
+            value={stats.objectsProcessed}
             change="+15.3%"
             changeType="increase"
             color="from-amber-500 to-orange-500"
+            isLoading={loadingStats}
           />
         </motion.div>
 
@@ -364,14 +459,20 @@ const Dashboard = () => {
                 </div>
                 <Activity className="w-5 h-5 text-primary" />
               </div>
-              <LineChart
-                data={ingestionData}
-                xKey="name"
-                lines={[
-                  { dataKey: 'datasets', name: 'Datasets', color: 'hsl(200, 100%, 70%)' },
-                ]}
-                height={250}
-              />
+              {ingestionData.length > 0 ? (
+                <LineChart
+                  data={ingestionData}
+                  xKey="name"
+                  lines={[
+                    { dataKey: 'datasets', name: 'Datasets', color: 'hsl(200, 100%, 70%)' },
+                  ]}
+                  height={250}
+                />
+              ) : (
+                <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                  No ingestion data available
+                </div>
+              )}
             </div>
           </div>
 
@@ -388,13 +489,19 @@ const Dashboard = () => {
                 </div>
                 <Layers className="w-5 h-5 text-secondary" />
               </div>
-              <BarChart
-                data={sourceData}
-                xKey="name"
-                bars={[{ dataKey: 'count', name: 'Datasets' }]}
-                height={250}
-                colorByValue
-              />
+              {sourceData.length > 0 ? (
+                <BarChart
+                  data={sourceData}
+                  xKey="name"
+                  bars={[{ dataKey: 'count', name: 'Datasets' }]}
+                  height={250}
+                  colorByValue
+                />
+              ) : (
+                <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                  No source data available
+                </div>
+              )}
             </div>
           </div>
         </motion.div>
@@ -449,9 +556,15 @@ const Dashboard = () => {
                 </motion.button>
               </div>
               <div className="space-y-2">
-                {recentActivity.map((activity, index) => (
-                  <ActivityItem key={index} {...activity} />
-                ))}
+                {recentActivity.length > 0 ? (
+                  recentActivity.map((activity, index) => (
+                    <ActivityItem key={index} {...activity} />
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No recent activity
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -481,42 +594,48 @@ const Dashboard = () => {
               <div className="hidden md:block absolute top-1/2 left-1/2 right-1/4 h-0.5 bg-gradient-to-r from-secondary/30 to-purple-500/30 transform -translate-y-1/2" />
               <div className="hidden md:block absolute top-1/2 left-3/4 right-1/4 h-0.5 bg-gradient-to-r from-purple-500/30 to-orange-500/30 transform -translate-y-1/2" />
               
-              {pipelineStages.map((stage, index) => (
-                <motion.div 
-                  key={index}
-                  className="relative p-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm group hover:scale-105 transition-all"
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  whileInView={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.4, delay: index * 0.1 }}
-                  whileHover={{ y: -5 }}
-                  viewport={{ once: true }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-white">{stage.stage}</span>
-                    <motion.div 
-                      className="w-2 h-2 bg-green-400 rounded-full"
-                      animate={{ scale: [1, 1.5, 1] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                    />
-                  </div>
-                  <div className={`text-2xl font-bold bg-gradient-to-r ${stage.color} bg-clip-text text-transparent`}>
-                    {stage.count}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1 group-hover:text-white/60 transition-colors">
-                    datasets in queue
-                  </p>
-                  {index < 3 && (
-                    <div className="absolute -right-2 top-1/2 -translate-y-1/2 z-10 hidden md:block">
-                      <motion.div
-                        animate={{ x: [0, 5, 0] }}
-                        transition={{ duration: 2, repeat: Infinity, delay: index * 0.2 }}
-                      >
-                        <ArrowUpRight className="w-4 h-4 text-white/40" />
-                      </motion.div>
+              {pipelineStages.length > 0 ? (
+                pipelineStages.map((stage, index) => (
+                  <motion.div 
+                    key={index}
+                    className="relative p-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm group hover:scale-105 transition-all"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.4, delay: index * 0.1 }}
+                    whileHover={{ y: -5 }}
+                    viewport={{ once: true }}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-white">{stage.stage}</span>
+                      <motion.div 
+                        className="w-2 h-2 bg-green-400 rounded-full"
+                        animate={{ scale: [1, 1.5, 1] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                      />
                     </div>
-                  )}
-                </motion.div>
-              ))}
+                    <div className={`text-2xl font-bold bg-gradient-to-r ${stage.color} bg-clip-text text-transparent`}>
+                      {stage.count}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 group-hover:text-white/60 transition-colors">
+                      datasets in queue
+                    </p>
+                    {index < 3 && (
+                      <div className="absolute -right-2 top-1/2 -translate-y-1/2 z-10 hidden md:block">
+                        <motion.div
+                          animate={{ x: [0, 5, 0] }}
+                          transition={{ duration: 2, repeat: Infinity, delay: index * 0.2 }}
+                        >
+                          <ArrowUpRight className="w-4 h-4 text-white/40" />
+                        </motion.div>
+                      </div>
+                    )}
+                  </motion.div>
+                ))
+              ) : (
+                <div className="col-span-4 text-center py-8 text-muted-foreground">
+                  No pipeline data available
+                </div>
+              )}
             </div>
           </div>
         </motion.div>
