@@ -1,95 +1,124 @@
 import requests
-from typing import Dict, Any, Union
-# from Backend.app.config import get_settings
+import csv
+import io
+from typing import Dict, Any, List
 
-settings = get_settings()
-
+from repository.raw_repo import RawDatasetRepository
+from Ingestion.validators import validate_dataset_schema
 
 class APIIngestor:
     """
-    Ingests data from external APIs and user uploads.
+    Handles ingestion of datasets from external APIs (NASA, ESA, ISRO).
+
     Responsibilities:
-    - Accept API-fetched data (NASA Image & Video Library)
-    - Accept user-uploaded data
-    - Validate basic schema
-    - Pass raw data forward (no normalization here)
+    - Connect to external APIs
+    - Fetch raw JSON / CSV data
+    - Apply basic preprocessing
+    - Validate schema
+    - Store data in Raw Dataset table
     """
 
-    def __init__(self):
-        # Load API credentials from .env via Settings
-        self.base_url: str = settings.NASA_API_BASE_URL
-        self.api_key: str = settings.NASA_API_KEY
+    def __init__(self, db):
+        self.db = db
+        self.raw_repo = RawDatasetRepository(db)
 
-    # -----------------------------
-    # NASA API ingestion
-    # -----------------------------
-    def search_nasa_images(self, query: str) -> Dict[str, Any]:
+        # Example API endpoints
+        self.sources = {
+            1: "https://images-api.nasa.gov/search",
+            2: "https://gea.esac.esa.int/tap-server/tap/sync",
+            3: "https://api.isro.gov.in/data",
+        }
+
+    # -------------------------------------------------
+    # Main ingestion entry point
+    # -------------------------------------------------
+
+    def ingest_from_api(self, source_id: int, query: str, user_id: str) -> Dict[str, Any]:
         """
-        Perform a search in NASA Image and Video Library.
+        Main ingestion workflow.
+        Called when user selects 'Import from NASA / ESA'.
         """
-        url = f"{self.base_url}/search"
+
+        if source_id not in self.sources:
+            raise ValueError("Unsupported data source")
+
+        api_url = self.sources[source_id]
+
+        raw_data = self._fetch_data(api_url, query)
+
+        cleaned_data = self._preprocess(raw_data)
+
+        validate_dataset_schema(cleaned_data)
+
+        dataset_id = self.raw_repo.save_raw_dataset(
+            user_id=user_id,
+            source_id=source_id,
+            data=cleaned_data,
+        )
+
+        return {
+            "status": "success",
+            "dataset_id": dataset_id,
+            "records": len(cleaned_data),
+        }
+
+    # -------------------------------------------------
+    # Fetch data from API
+    # -------------------------------------------------
+
+    def _fetch_data(self, url: str, query: str):
+
         params = {"q": query}
-        response = requests.get(url, params=params)
+
+        response = requests.get(url, params=params, timeout=20)
         response.raise_for_status()
-        return response.json()
 
-    def get_asset(self, nasa_id: str) -> Dict[str, Any]:
-        """
-        Retrieve a media asset manifest.
-        """
-        url = f"{self.base_url}/asset/{nasa_id}"
-        params = {"api_key": self.api_key}
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        return response.json()
+        content_type = response.headers.get("Content-Type", "")
 
-    def get_metadata(self, nasa_id: str) -> Dict[str, Any]:
-        """
-        Retrieve metadata location for a media asset.
-        """
-        url = f"{self.base_url}/metadata/{nasa_id}"
-        params = {"api_key": self.api_key}
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        return response.json()
+        # JSON API
+        if "application/json" in content_type:
+            return response.json()
 
-    def get_captions(self, nasa_id: str) -> Dict[str, Any]:
-        """
-        Retrieve captions for a video asset.
-        """
-        url = f"{self.base_url}/captions/{nasa_id}"
-        params = {"api_key": self.api_key}
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        return response.json()
+        # CSV API
+        if "text/csv" in content_type:
+            csv_data = response.text
+            reader = csv.DictReader(io.StringIO(csv_data))
+            return list(reader)
 
-    def sanitize_query(user_input: str) -> str:
-        """
-        NASA API only supports keyword queries, not full sentences.
-        This function strips filler words and keeps core terms.
-        """
-        # Very simple approach: take the last word or keywords
-        tokens = user_input.lower().split()
-        # Keep only alphabetic tokens
-        keywords = [t for t in tokens if t.isalpha()]
-        return " ".join(keywords)
+        raise ValueError("Unsupported API response format")
 
-    # -----------------------------
-    # User-uploaded data ingestion
-    # -----------------------------
-    def ingest_user_data(self, data: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
-        """
-        Accept user-uploaded raw data.
-        Validates basic schema: must be a dict with required keys.
-        """
-        if not isinstance(data, dict):
-            raise ValueError("Uploaded data must be a dictionary.")
+    # -------------------------------------------------
+    # Basic preprocessing
+    # -------------------------------------------------
 
-        # Example schema validation: require 'id' and 'content'
-        required_keys = {"id", "content"}
-        missing = required_keys - data.keys()
-        if missing:
-            raise ValueError(f"Missing required fields: {', '.join(missing)}")
+    def _preprocess(self, data):
 
-        # Pass raw data forward (no normalization here)
-        return data
+        if isinstance(data, dict):
+
+            # NASA returns nested structure
+            if "collection" in data and "items" in data["collection"]:
+                data = data["collection"]["items"]
+
+        cleaned = []
+
+        for row in data:
+
+            if not isinstance(row, dict):
+                continue
+
+            cleaned_row = {}
+
+            for key, value in row.items():
+
+                # Normalize column names
+                clean_key = key.strip().lower().replace(" ", "_")
+
+                if value is None or value == "":
+                    continue
+
+                cleaned_row[clean_key] = value
+
+            if cleaned_row:
+                cleaned.append(cleaned_row)
+
+        return cleaned

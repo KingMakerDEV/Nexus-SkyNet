@@ -11,8 +11,8 @@ class Config:
     # -------------------------------------------------
     # PostgreSQL Database
     # -------------------------------------------------
-    DB_USER = "postgres"
-    DB_PASSWORD = "Abhay123"
+    DB_USER = "nik"
+    DB_PASSWORD = "nik05"
     DB_HOST = "localhost"
     DB_PORT = "5432"   # default PostgreSQL port
     DB_NAME = "nexus_skynet"   # change if your DB name is different

@@ -1,34 +1,82 @@
+import csv
+import json
+from typing import List, Dict, Any
 
 
-from typing import Dict, Any
-
-
-class Validators:
+class DatasetValidationError(Exception):
     """
-    Validation utilities for ingestion.
+    Custom exception for dataset validation errors.
+    """
+    pass
+
+
+class DatasetValidator:
+    """
+    Flexible validator for CSV and JSON datasets.
+    Accepts arbitrary schemas but ensures structural integrity.
     """
 
     @staticmethod
-    def validate_raw_payload(payload: Dict[str, Any]) -> bool:
-        """
-        Validate that raw payload contains required fields.
-        """
-        if not isinstance(payload, dict):
-            raise ValueError("Payload must be a dictionary")
+    def validate_csv(file_content: str) -> List[Dict[str, Any]]:
+        try:
+            reader = csv.DictReader(file_content.splitlines())
+            rows = list(reader)
 
-        # Example: require 'nasa_id' and 'title'
-        required_fields = ["nasa_id", "title"]
-        for field in required_fields:
-            if field not in payload:
-                raise ValueError(f"Missing required field: {field}")
+            if not rows:
+                raise DatasetValidationError("CSV file is empty")
 
-        return True
+            if reader.fieldnames is None or len(reader.fieldnames) == 0:
+                raise DatasetValidationError("CSV has no headers")
+
+            for i, row in enumerate(rows):
+                if not isinstance(row, dict):
+                    raise DatasetValidationError(f"Row {i} is invalid")
+
+            return rows
+
+        except DatasetValidationError:
+            raise
+        except Exception as e:
+            raise DatasetValidationError(f"CSV validation failed: {str(e)}")
 
     @staticmethod
-    def validate_format(format: str) -> bool:
-        """
-        Validate that format is either JSON or CSV.
-        """
-        if format not in ["JSON", "CSV"]:
-            raise ValueError("Format must be 'JSON' or 'CSV'")
-        return True
+    def validate_json(file_content: str) -> List[Dict[str, Any]]:
+        try:
+            data = json.loads(file_content)
+
+            if isinstance(data, dict):
+                data = [data]
+
+            if not isinstance(data, list):
+                raise DatasetValidationError("JSON must be an object or array")
+
+            if len(data) == 0:
+                raise DatasetValidationError("JSON dataset is empty")
+
+            for i, row in enumerate(data):
+                if not isinstance(row, dict):
+                    raise DatasetValidationError(f"Row {i} must be an object")
+
+            return data
+
+        except json.JSONDecodeError:
+            raise DatasetValidationError("Invalid JSON format")
+
+        except DatasetValidationError:
+            raise
+        except Exception as e:
+            raise DatasetValidationError(f"JSON validation failed: {str(e)}")
+
+
+def validate_dataset_schema(file_content: str, file_type: str):
+    """
+    Entry point for dataset validation.
+    """
+
+    if file_type.upper() == "CSV":
+        return DatasetValidator.validate_csv(file_content)
+
+    if file_type.upper() == "JSON":
+        return DatasetValidator.validate_json(file_content)
+
+    raise DatasetValidationError("Unsupported dataset type")

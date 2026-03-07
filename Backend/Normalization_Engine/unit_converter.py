@@ -1,82 +1,75 @@
+from typing import Dict, Any
 
 
 class UnitConverter:
     """
-    Handles unit conversions for terrestrial and space-related units.
+    Converts measurement units into a standardized unit system.
     """
 
-    # --- Distance ---
-    @staticmethod
-    def miles_to_km(miles: float) -> float:
-        return miles * 1.60934
+    # Standard unit targets
+    STANDARD_UNITS = {
+        "temperature": "K",   # Kelvin
+        "distance": "AU",     # Astronomical Unit
+        "velocity": "m/s",
+    }
 
-    @staticmethod
-    def km_to_miles(km: float) -> float:
-        return km / 1.60934
+    # Conversion rules
+    CONVERSIONS = {
+        # Temperature
+        ("C", "K"): lambda v: v + 273.15,
+        ("F", "K"): lambda v: (v - 32) * 5 / 9 + 273.15,
+        ("K", "K"): lambda v: v,
 
-    @staticmethod
-    def km_to_au(km: float) -> float:
-        return km / 149_597_870.7  # 1 AU in km
+        # Distance
+        ("km", "AU"): lambda v: v / 149597870.7,
+        ("m", "AU"): lambda v: v / 149597870700,
+        ("AU", "AU"): lambda v: v,
 
-    @staticmethod
-    def au_to_km(au: float) -> float:
-        return au * 149_597_870.7
+        # Velocity
+        ("km/s", "m/s"): lambda v: v * 1000,
+        ("m/s", "m/s"): lambda v: v,
+    }
 
-    @staticmethod
-    def km_to_lightyears(km: float) -> float:
-        return km / 9.461e12  # 1 ly in km
+    def convert_units(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Convert units in a dataset record to standard units.
+        """
 
-    @staticmethod
-    def lightyears_to_km(ly: float) -> float:
-        return ly * 9.461e12
+        value = record.get("value")
+        unit = record.get("unit")
 
-    @staticmethod
-    def km_to_parsecs(km: float) -> float:
-        return km / 3.086e13  # 1 parsec in km
+        if value is None or unit is None:
+            return record
 
-    @staticmethod
-    def parsecs_to_km(pc: float) -> float:
-        return pc * 3.086e13
+        unit = str(unit)
 
-    # --- Mass ---
-    @staticmethod
-    def kg_to_solar_masses(kg: float) -> float:
-        return kg / 1.989e30  # 1 solar mass in kg
+        # Determine conversion category
+        target_unit = None
 
-    @staticmethod
-    def solar_masses_to_kg(msun: float) -> float:
-        return msun * 1.989e30
+        if unit in ["C", "F", "K"]:
+            target_unit = "K"
 
-    @staticmethod
-    def kg_to_earth_masses(kg: float) -> float:
-        return kg / 5.972e24  # 1 Earth mass in kg
+        elif unit in ["km", "m", "AU"]:
+            target_unit = "AU"
 
-    @staticmethod
-    def earth_masses_to_kg(mearth: float) -> float:
-        return mearth * 5.972e24
+        elif unit in ["km/s", "m/s"]:
+            target_unit = "m/s"
 
-    # --- Temperature ---
-    @staticmethod
-    def fahrenheit_to_celsius(f: float) -> float:
-        return (f - 32) * 5.0 / 9.0
+        if not target_unit:
+            return record
 
-    @staticmethod
-    def celsius_to_fahrenheit(c: float) -> float:
-        return (c * 9.0 / 5.0) + 32
+        conversion_key = (unit, target_unit)
 
-    @staticmethod
-    def celsius_to_kelvin(c: float) -> float:
-        return c + 273.15
+        if conversion_key in self.CONVERSIONS:
 
-    @staticmethod
-    def kelvin_to_celsius(k: float) -> float:
-        return k - 273.15
+            try:
+                value = float(value)
+                converted_value = self.CONVERSIONS[conversion_key](value)
 
-    # --- Energy ---
-    @staticmethod
-    def joules_to_ev(j: float) -> float:
-        return j / 1.602e-19
+                record["value"] = converted_value
+                record["unit"] = target_unit
 
-    @staticmethod
-    def ev_to_joules(ev: float) -> float:
-        return ev * 1.602e-19
+            except Exception:
+                pass
+
+        return record

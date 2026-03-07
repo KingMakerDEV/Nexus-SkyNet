@@ -1,28 +1,41 @@
-
-
 import uuid
-from sqlalchemy import Column, String, TIMESTAMP, ForeignKey, JSON
-from sqlalchemy.dialects.postgresql import UUID
-from app.database import Base
+from app.extionsions import db
 
 
-class NormalizedDataset(Base):
+class NormalizedDataset(db.Model):
     __tablename__ = "normalized_datasets"
 
-    # Primary key
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(
+        db.UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
 
-    # Link back to raw dataset
-    raw_dataset_id = Column(UUID(as_uuid=True), ForeignKey("raw_datasets.id"))
+    # ✅ Changed from UUID to Integer to match raw_datasets.id
+    raw_dataset_id = db.Column(
+        db.Integer,
+        db.ForeignKey("raw_datasets.id"),
+        nullable=False
+    )
 
-    # Standardized payload
-    standardized_payload = Column(JSON, nullable=False)
+    standardized_payload = db.Column(
+        db.JSON,
+        nullable=False
+    )
 
-    # Version of normalization pipeline
-    normalization_version = Column(String(20))
+    normalization_version = db.Column(
+        db.String(20),
+        nullable=True
+    )
 
-    # Timestamp of normalization
-    normalized_at = Column(TIMESTAMP, server_default="CURRENT_TIMESTAMP")
+    normalized_at = db.Column(
+        db.TIMESTAMP,
+        server_default=db.func.now()
+    )
 
     def __repr__(self):
-        return f"<NormalizedDataset(id={self.id}, raw_dataset_id={self.raw_dataset_id}, version={self.normalization_version})>"
+        return (
+            f"<NormalizedDataset(id={self.id}, "
+            f"raw_dataset_id={self.raw_dataset_id}, "
+            f"version={self.normalization_version})>"
+        )

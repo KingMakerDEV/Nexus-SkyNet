@@ -1,24 +1,73 @@
-
-
 from typing import Dict, Any
 
 
 class SchemaMapper:
     """
-    Maps raw payload fields into standardized schema.
+    Maps raw dataset fields into a canonical platform schema.
     """
 
-    @staticmethod
-    def map_raw_to_standard(raw_payload: Dict[str, Any]) -> Dict[str, Any]:
+    # Canonical schema keys expected across the platform
+    CANONICAL_SCHEMA = {
+        "timestamp",
+        "source",
+        "value",
+        "unit",
+        "latitude",
+        "longitude",
+        "id",
+        "content",
+    }
+
+    # Known raw → canonical field mappings
+    FIELD_MAP = {
+        "obs_time": "timestamp",
+        "observation_time": "timestamp",
+        "time": "timestamp",
+        "datetime": "timestamp",
+
+        "temp_c": "value",
+        "temperature_c": "value",
+        "temperature": "value",
+        "value": "value",
+
+        "unit": "unit",
+        "units": "unit",
+
+        "lat": "latitude",
+        "latitude": "latitude",
+
+        "lon": "longitude",
+        "long": "longitude",
+        "longitude": "longitude",
+
+        "src": "source",
+        "origin": "source",
+        "source": "source",
+
+        "id": "id",
+        "content": "content",
+    }
+
+    def map_schema(self, record: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Example mapping: raw NASA API payload → normalized schema.
+        Convert arbitrary field names into canonical schema.
         """
-        normalized = {
-            "dataset_name": raw_payload.get("title"),
-            "nasa_id": raw_payload.get("nasa_id"),
-            "description": raw_payload.get("description"),
-            "keywords": raw_payload.get("keywords", []),
-            "media_type": raw_payload.get("media_type"),
-            "date_created": raw_payload.get("date_created"),
-        }
+
+        normalized: Dict[str, Any] = {}
+
+        for key, value in record.items():
+
+            if value is None or value == "":
+                continue
+
+            clean_key = key.strip().lower().replace(" ", "_")
+
+            mapped_key = self.FIELD_MAP.get(clean_key, clean_key)
+
+            normalized[mapped_key] = value
+
+        # Ensure all canonical keys exist
+        for key in self.CANONICAL_SCHEMA:
+            normalized.setdefault(key, None)
+
         return normalized

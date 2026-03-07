@@ -1,28 +1,22 @@
-
+from datetime import datetime
 import uuid
-from sqlalchemy import Column, String, TIMESTAMP, ForeignKey, ARRAY
-from sqlalchemy.dialects.postgresql import UUID
-from app.database import Base
+from app.extionsions import db
 
 
-class DatasetMetadata(Base):
+class Metadata(db.Model):
     __tablename__ = "dataset_metadata"
 
-    # Primary key
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(db.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    raw_dataset_id = db.Column(db.Integer, db.ForeignKey("raw_datasets.id"), nullable=True)
+    normalized_dataset_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey("normalized_datasets.id"), nullable=True)
+    meta_data = db.Column(db.JSON, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Link back to raw dataset
-    raw_dataset_id = Column(UUID(as_uuid=True), ForeignKey("raw_datasets.id"))
-
-    # Metadata fields
-    dataset_name = Column(String(255))
-    coordinate_system = Column(String(50))
-    unit_system = Column(String(50))
-    observation_time = Column(TIMESTAMP)
-    tags = Column(ARRAY(String))
-
-    # Timestamp
-    created_at = Column(TIMESTAMP, server_default="CURRENT_TIMESTAMP")
-
-    def __repr__(self):
-        return f"<DatasetMetadata(id={self.id}, dataset_name={self.dataset_name}, coordinate_system={self.coordinate_system})>"
+    # Optional: model-level check constraint (already enforced in DB)
+    __table_args__ = (
+        db.CheckConstraint(
+            "(raw_dataset_id IS NOT NULL AND normalized_dataset_id IS NULL) OR "
+            "(raw_dataset_id IS NULL AND normalized_dataset_id IS NOT NULL)",
+            name="one_dataset_reference"
+        ),
+    )
