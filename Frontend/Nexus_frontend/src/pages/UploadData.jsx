@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Upload,
   FileText,
@@ -11,11 +11,11 @@ import {
   Loader2,
   ArrowRight,
   Eye,
+  BarChart3, // ✅ Added for Analytics button
 } from 'lucide-react';
 import { DataProcessingLoader } from '../components/common/Loader';
 import CoordinateViewer from '../components/visualization/CoordinateViewer';
-import { uploadDataFile, getIngestionStatus } from '../api/ingestionApi'; // Import API
-import { useNavigate } from 'react-router-dom'; // Import useNavigate
+import { useNavigate } from 'react-router-dom';
 
 const UploadData = () => {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -25,16 +25,49 @@ const UploadData = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [previewData, setPreviewData] = useState(null);
   const [error, setError] = useState(null);
-  const [jobId, setJobId] = useState(null);
+  const [rawDatasetId, setRawDatasetId] = useState(null);
+  const [normalizedDatasetId, setNormalizedDatasetId] = useState(null);
+  const [sources, setSources] = useState([]);
+  const [loadingSources, setLoadingSources] = useState(true);
+  const [showAnalyticsButton, setShowAnalyticsButton] = useState(false); // ✅ New state
+  
   const fileInputRef = useRef(null);
-  const navigate = useNavigate(); // For redirecting to dashboard
+  const navigate = useNavigate();
 
-  const sources = [
-    { id: 'nasa', name: 'NASA', icon: '🚀', description: 'NASA Exoplanet Archive, MAST, etc.' },
-    { id: 'esa', name: 'ESA', icon: '🛸', description: 'Gaia, XMM-Newton, Herschel data' },
-    { id: 'observatory', name: 'Observatory', icon: '🔭', description: 'Ground-based observations' },
-    { id: 'other', name: 'Other', icon: '📡', description: 'Custom or third-party sources' },
-  ];
+  // Fetch available data sources
+  useEffect(() => {
+    fetchDataSources();
+  }, []);
+
+  const fetchDataSources = async () => {
+    setLoadingSources(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch('http://localhost:5000/ingestion/sources', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch sources');
+      }
+      
+      const data = await response.json();
+      setSources(data.sources || []);
+    } catch (err) {
+      console.error('Error fetching sources:', err);
+      // Fallback sources
+      setSources([
+        { id: 1, name: 'NASA', icon: '🚀', description: 'NASA Exoplanet Archive, MAST, etc.' },
+        { id: 2, name: 'ESA', icon: '🛸', description: 'Gaia, XMM-Newton, Herschel data' },
+        { id: 3, name: 'Observatory', icon: '🔭', description: 'Ground-based observations' },
+        { id: 4, name: 'Other', icon: '📡', description: 'Custom or third-party sources' },
+      ]);
+    } finally {
+      setLoadingSources(false);
+    }
+  };
 
   const processingSteps = [
     'Uploading file to server',
@@ -54,6 +87,7 @@ const UploadData = () => {
     e.preventDefault();
     const file = e.dataTransfer?.files[0] || e.target.files?.[0];
     if (file) {
+      console.log('File selected:', file.name);
       setSelectedFile(file);
       setError(null);
     }
@@ -68,50 +102,103 @@ const UploadData = () => {
     setPreviewData(null);
     setProcessingStep(-1);
     setUploadProgress(0);
-    setJobId(null);
+    setRawDatasetId(null);
+    setNormalizedDatasetId(null);
+    setShowAnalyticsButton(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
-  // Poll ingestion status
-  const pollIngestionStatus = async (id) => {
+  // Step 1: Upload the file
+  const uploadFile = async () => {
+    if (!selectedFile || !selectedSource) {
+      setError('Please select a file and data source');
+      return null;
+    }
+
+    setProcessingStep(0);
+    
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    formData.append('source_id', selectedSource);
+
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      setError('You must be logged in to upload files');
+      return null;
+    }
+
     try {
-      const response = await getIngestionStatus(id);
-      const status = response.data;
-      
-      // Update processing step based on status
-      if (status.step === 'uploading') setProcessingStep(0);
-      else if (status.step === 'validating') setProcessingStep(1);
-      else if (status.step === 'normalizing') setProcessingStep(2);
-      else if (status.step === 'storing') setProcessingStep(3);
-      
-      // Check if complete
-      if (status.status === 'completed') {
-        setProcessingStep(processingSteps.length);
-        setPreviewData(status.preview || {
-          totalRows: status.rowCount || 0,
-          columns: status.columns || [],
-          normalizedUnits: status.units || {},
-          sampleConversion: status.sample || {},
-        });
-        setIsProcessing(false);
-        
-        // Redirect to dashboard after 2 seconds
-        setTimeout(() => {
-          navigate('/dashboard');
-        }, 2000);
-      } else if (status.status === 'failed') {
-        setError(status.message || 'Ingestion failed');
-        setIsProcessing(false);
-      } else {
-        // Continue polling
-        setTimeout(() => pollIngestionStatus(id), 2000);
+      const response = await fetch('http://localhost:5000/ingestion/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Token expired or invalid. Please login again.');
+        }
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Upload failed');
       }
+
+      const data = await response.json();
+      console.log('Upload response:', data);
+      
+      setRawDatasetId(data.dataset_id);
+      setUploadProgress(100);
+      return data.dataset_id;
+      
     } catch (err) {
-      console.error('Error polling status:', err);
-      setError('Failed to get ingestion status');
-      setIsProcessing(false);
+      console.error('Upload error:', err);
+      setError(err.message || 'Upload failed. Please try again.');
+      return null;
+    }
+  };
+
+  // Step 2: Trigger normalization
+  const triggerNormalization = async (datasetId) => {
+    setProcessingStep(1);
+    
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      setError('You must be logged in to normalize datasets');
+      return null;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:5000/ingestion/normalize/${datasetId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Token expired or invalid. Please login again.');
+        }
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Normalization failed');
+      }
+
+      const data = await response.json();
+      console.log('Normalization response:', data);
+      
+      setNormalizedDatasetId(data.normalized_dataset_id);
+      setProcessingStep(2);
+      setProcessingStep(3); // Complete
+      setShowAnalyticsButton(true); // ✅ Enable analytics button
+      
+    } catch (err) {
+      console.error('Normalization error:', err);
+      setError(err.message || 'Normalization failed. Please try again.');
+      return null;
     }
   };
 
@@ -124,26 +211,29 @@ const UploadData = () => {
     setIsProcessing(true);
     setError(null);
     setProcessingStep(0);
+    setUploadProgress(0);
 
     try {
-      // Upload file with progress tracking
-      const response = await uploadDataFile(selectedFile, selectedSource, (progress) => {
-        setUploadProgress(progress);
+      // Step 1: Upload file
+      const datasetId = await uploadFile();
+      if (!datasetId) throw new Error('Upload failed');
+      
+      // Step 2: Trigger normalization
+      await triggerNormalization(datasetId);
+      
+      setIsProcessing(false);
+      
+      // Optional: Show success message
+      setPreviewData({
+        totalRows: 100,
+        message: "Dataset uploaded and normalized successfully!"
       });
-
-      // Get job ID from response
-      const { jobId: newJobId } = response.data;
-      setJobId(newJobId);
-
-      // Start polling for status
-      pollIngestionStatus(newJobId);
-
+      
     } catch (err) {
-      console.error('Upload error:', err);
-      setError(err.response?.data?.error || 'Upload failed. Please try again.');
+      console.error('Ingestion error:', err);
+      setError(err.message || 'Ingestion failed');
       setIsProcessing(false);
       setProcessingStep(-1);
-      setUploadProgress(0);
     }
   };
 
@@ -158,6 +248,15 @@ const UploadData = () => {
   const goToDashboard = () => {
     navigate('/dashboard');
   };
+
+  const goToAnalytics = () => {
+    if (normalizedDatasetId) {
+      navigate(`/analytics?dataset=${normalizedDatasetId}`);
+    }
+  };
+
+  // Check if button should be enabled
+  const isButtonEnabled = selectedFile && selectedSource && !isProcessing;
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
@@ -258,25 +357,34 @@ const UploadData = () => {
             Select Data Source
           </h3>
 
-          <div className="grid grid-cols-2 gap-3">
-            {sources.map((source) => (
-              <button
-                key={source.id}
-                onClick={() => setSelectedSource(source.id)}
-                className={`
-                  p-4 rounded-xl border text-left transition-all
-                  ${selectedSource === source.id
-                    ? 'border-primary bg-primary/10'
-                    : 'border-border hover:border-primary/50 hover:bg-muted/30'
-                  }
-                `}
-              >
-                <span className="text-2xl">{source.icon}</span>
-                <p className="font-medium text-foreground mt-2">{source.name}</p>
-                <p className="text-xs text-muted-foreground mt-1">{source.description}</p>
-              </button>
-            ))}
-          </div>
+          {loadingSources ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {sources.map((source) => (
+                <div
+                  key={source.id}
+                  onClick={() => {
+                    console.log('Setting source to:', source.id);
+                    setSelectedSource(source.id);
+                  }}
+                  className={`
+                    p-4 rounded-xl border text-left transition-all cursor-pointer
+                    ${selectedSource === source.id
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border hover:border-primary/50 hover:bg-muted/30'
+                    }
+                  `}
+                >
+                  <span className="text-2xl">{source.icon || '📡'}</span>
+                  <p className="font-medium text-foreground mt-2">{source.name}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{source.description}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -296,8 +404,8 @@ const UploadData = () => {
             Processing Status
           </h3>
 
-          {/* Progress bar */}
-          {uploadProgress < 100 && processingStep === 0 && (
+          {/* Progress bar for upload */}
+          {processingStep === 0 && uploadProgress < 100 && (
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Uploading...</span>
@@ -318,7 +426,7 @@ const UploadData = () => {
           )}
 
           {/* Completion */}
-          {processingStep >= processingSteps.length && previewData && (
+          {processingStep >= processingSteps.length - 1 && (
             <div className="flex items-center gap-3 p-4 rounded-xl bg-green-500/10 border border-green-500/50">
               <CheckCircle2 className="w-5 h-5 text-green-500" />
               <div>
@@ -332,75 +440,40 @@ const UploadData = () => {
         </div>
       )}
 
-      {/* Normalization Preview */}
-      {previewData && (
+      {/* Success Preview */}
+      {previewData && previewData.message && (
         <div className="glass rounded-xl p-6 space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
               <Eye className="w-5 h-5 text-primary" />
-              Normalization Preview
+              Upload Successful
             </h3>
-            <span className="text-sm text-muted-foreground">
-              {previewData.totalRows?.toLocaleString() || 0} rows processed
-            </span>
           </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-3 rounded-lg bg-muted/30">
-              <p className="text-xs text-muted-foreground">Total Rows</p>
-              <p className="text-lg font-bold text-foreground">{previewData.totalRows?.toLocaleString() || 0}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/30">
-              <p className="text-xs text-muted-foreground">Columns</p>
-              <p className="text-lg font-bold text-foreground">{previewData.columns?.length || 0}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/30">
-              <p className="text-xs text-muted-foreground">Coordinate System</p>
-              <p className="text-lg font-bold text-primary">ICRS</p>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/30">
-              <p className="text-xs text-muted-foreground">Epoch</p>
-              <p className="text-lg font-bold text-foreground">J2000.0</p>
-            </div>
-          </div>
-
-          {/* Coordinate conversion preview */}
-          {previewData.sampleConversion && (
-            <CoordinateViewer
-              originalCoords={previewData.sampleConversion.original || {}}
-              normalizedCoords={previewData.sampleConversion.normalized || {}}
-              coordinateSystem="ICRS"
-            />
-          )}
-
-          {/* Normalized units */}
-          {previewData.normalizedUnits && (
-            <div>
-              <h4 className="text-sm font-medium text-foreground mb-3">Normalized Units</h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {Object.entries(previewData.normalizedUnits).map(([field, unit]) => (
-                  <div key={field} className="p-3 rounded-lg bg-muted/20 border border-border">
-                    <p className="text-xs text-muted-foreground capitalize">{field}</p>
-                    <p className="text-sm text-foreground font-medium">{unit}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <p className="text-foreground">{previewData.message}</p>
         </div>
       )}
 
       {/* Action buttons */}
       <div className="flex justify-end gap-4">
-        {processingStep >= processingSteps.length ? (
-          <button
-            onClick={goToDashboard}
-            className="flex items-center gap-2 px-6 py-3 rounded-lg font-medium bg-primary text-primary-foreground hover:bg-primary/90 glow-primary transition-all"
-          >
-            <ArrowRight className="w-5 h-5" />
-            Go to Dashboard
-          </button>
+        {processingStep >= processingSteps.length - 1 ? (
+          <div className="flex gap-4">
+            <button
+              onClick={goToDashboard}
+              className="flex items-center gap-2 px-6 py-3 rounded-lg font-medium bg-primary text-primary-foreground hover:bg-primary/90 glow-primary transition-all"
+            >
+              <ArrowRight className="w-5 h-5" />
+              Go to Dashboard
+            </button>
+            {showAnalyticsButton && normalizedDatasetId && (
+              <button
+                onClick={goToAnalytics}
+                className="flex items-center gap-2 px-6 py-3 rounded-lg font-medium bg-secondary text-secondary-foreground hover:bg-secondary/90 glow-secondary transition-all"
+              >
+                <BarChart3 className="w-5 h-5" />
+                Go to Analytics
+              </button>
+            )}
+          </div>
         ) : (
           <>
             <button
@@ -412,12 +485,12 @@ const UploadData = () => {
             </button>
             <button
               onClick={startIngestion}
-              disabled={!selectedFile || !selectedSource || isProcessing}
+              disabled={!isButtonEnabled}
               className={`
                 flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all
-                ${!selectedFile || !selectedSource || isProcessing
-                  ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                  : 'bg-primary text-primary-foreground hover:bg-primary/90 glow-primary'
+                ${isButtonEnabled
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90 glow-primary cursor-pointer'
+                  : 'bg-muted text-muted-foreground cursor-not-allowed opacity-50'
                 }
               `}
             >
