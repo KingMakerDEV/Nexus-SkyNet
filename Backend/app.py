@@ -8,6 +8,7 @@ from app.config import Config
 # Blueprints
 from Api_http_level.auth_routes import auth_bp
 from Api_http_level.ingestion_routes import ingestion_bp
+from Api_http_level.visualization_routes import visualization_bp
 
 
 def create_app():
@@ -28,6 +29,8 @@ def create_app():
     # Register blueprints
     app.register_blueprint(auth_bp)        # Authentication routes
     app.register_blueprint(ingestion_bp)   # Dataset ingestion + normalization
+    app.register_blueprint(visualization_bp)
+
 
     # Auto-create tables (development only)
     with app.app_context():

@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Set
 
 from Normalization_Engine.schema_mapper import SchemaMapper
 from Normalization_Engine.unit_converter import UnitConverter
@@ -19,6 +19,21 @@ class NormalizationPipeline:
     4. Persist normalized dataset
     """
 
+    # Core fields that should be kept in the final normalized data
+    CORE_FIELDS: Set[str] = {
+        "exoplanet_id",
+        "discovery_year",
+        "distance_ly",
+        "mass_earths",
+        "radius_earths",
+        "orbital_period_days",
+        "surface_temp_k",
+        "star_type",
+        "habitability_index",
+        "discovery_method",
+        "atmosphere_type",
+    }
+
     def __init__(self, db):
         self.db = db
 
@@ -34,9 +49,7 @@ class NormalizationPipeline:
     # -------------------------------------------------------
 
     def run(self, dataset_id: int) -> Dict[str, Any]:
-
         try:
-
             raw_dataset = self.raw_repo.get_raw_dataset(dataset_id)
 
             if not raw_dataset:
@@ -49,9 +62,13 @@ class NormalizationPipeline:
 
             normalized_data = self._normalize_records(raw_data)
 
+            # You can set a version string here, e.g., "1.0"
+            normalization_version = "1.0"
+
             normalized_dataset_id = self.normalized_repo.save_normalized_dataset(
                 raw_dataset_id=dataset_id,
                 data=normalized_data,
+                normalization_version=normalization_version,  # optional
             )
 
             return {
@@ -61,7 +78,6 @@ class NormalizationPipeline:
             }
 
         except Exception as e:
-
             return {
                 "status": "error",
                 "error": str(e),
@@ -72,23 +88,22 @@ class NormalizationPipeline:
     # -------------------------------------------------------
 
     def _normalize_records(self, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-
         normalized_records = []
 
         for record in records:
-
             try:
-
                 mapped = self.schema_mapper.map_schema(record)
-
                 converted_units = self.unit_converter.convert_units(mapped)
-
                 converted_coordinates = self.coordinate_converter.convert_coordinates(
                     converted_units
                 )
-
-                normalized_records.append(converted_coordinates)
-
+                # Keep only core fields to remove placeholder columns
+                cleaned_record = {
+                    key: converted_coordinates[key]
+                    for key in self.CORE_FIELDS
+                    if key in converted_coordinates
+                }
+                normalized_records.append(cleaned_record)
             except Exception:
                 continue
 

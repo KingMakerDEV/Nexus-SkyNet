@@ -8,12 +8,6 @@ from Models.metadata import Metadata
 class RawDatasetRepository:
     """
     Data access layer for Raw Datasets.
-
-    Responsibilities:
-    - Insert raw datasets
-    - Fetch raw datasets
-    - Update metadata
-    - Delete datasets
     """
 
     def __init__(self, db):
@@ -48,7 +42,7 @@ class RawDatasetRepository:
         # Save metadata if provided
         if metadata:
             meta = Metadata(
-                dataset_id=dataset_id,
+                raw_dataset_id=dataset_id,          # ✅ changed from dataset_id
                 meta_data=metadata,
                 created_at=datetime.utcnow(),
             )
@@ -67,14 +61,8 @@ class RawDatasetRepository:
     ) -> int:
         """
         Insert a raw dataset, storing filename and file type as metadata.
-        This method matches the signature expected by IngestionService.
         """
-        # Bundle filename and file_type into metadata dict
-        metadata = {
-            "filename": filename,
-            "file_type": file_type,
-        }
-
+        metadata = {"filename": filename, "file_type": file_type}
         return self.save_raw_dataset(
             user_id=user_id,
             source_id=source_id,
@@ -87,9 +75,6 @@ class RawDatasetRepository:
     # -------------------------------------------------------
 
     def get_raw_dataset(self, dataset_id: int) -> Optional[RawDataset]:
-        """
-        Fetch a raw dataset by ID.
-        """
         return (
             self.db.session.query(RawDataset)
             .filter(RawDataset.id == dataset_id)
@@ -101,9 +86,6 @@ class RawDatasetRepository:
     # -------------------------------------------------------
 
     def get_user_datasets(self, user_id: str) -> List[RawDataset]:
-        """
-        Fetch all datasets uploaded by a user.
-        """
         return (
             self.db.session.query(RawDataset)
             .filter(RawDataset.user_id == user_id)
@@ -120,9 +102,6 @@ class RawDatasetRepository:
         dataset_id: int,
         updated_data: List[Dict[str, Any]],
     ) -> bool:
-        """
-        Update dataset content.
-        """
         dataset = (
             self.db.session.query(RawDataset)
             .filter(RawDataset.id == dataset_id)
@@ -134,7 +113,6 @@ class RawDatasetRepository:
 
         dataset.data = updated_data
         dataset.updated_at = datetime.utcnow()
-
         self.db.session.commit()
         return True
 
@@ -143,9 +121,6 @@ class RawDatasetRepository:
     # -------------------------------------------------------
 
     def delete_raw_dataset(self, dataset_id: int) -> bool:
-        """
-        Delete dataset by ID.
-        """
         dataset = (
             self.db.session.query(RawDataset)
             .filter(RawDataset.id == dataset_id)
