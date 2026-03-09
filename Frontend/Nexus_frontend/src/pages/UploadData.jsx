@@ -11,7 +11,7 @@ import {
   Loader2,
   ArrowRight,
   Eye,
-  BarChart3, // ✅ Added for Analytics button
+  BarChart3,
 } from 'lucide-react';
 import { DataProcessingLoader } from '../components/common/Loader';
 import CoordinateViewer from '../components/visualization/CoordinateViewer';
@@ -27,9 +27,10 @@ const UploadData = () => {
   const [error, setError] = useState(null);
   const [rawDatasetId, setRawDatasetId] = useState(null);
   const [normalizedDatasetId, setNormalizedDatasetId] = useState(null);
+  const [visualizationToken, setVisualizationToken] = useState(null);
   const [sources, setSources] = useState([]);
   const [loadingSources, setLoadingSources] = useState(true);
-  const [showAnalyticsButton, setShowAnalyticsButton] = useState(false); // ✅ New state
+  const [uploadComplete, setUploadComplete] = useState(false);
   
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
@@ -90,6 +91,7 @@ const UploadData = () => {
       console.log('File selected:', file.name);
       setSelectedFile(file);
       setError(null);
+      setUploadComplete(false);
     }
   };
 
@@ -104,7 +106,8 @@ const UploadData = () => {
     setUploadProgress(0);
     setRawDatasetId(null);
     setNormalizedDatasetId(null);
-    setShowAnalyticsButton(false);
+    setVisualizationToken(null);
+    setUploadComplete(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -191,9 +194,32 @@ const UploadData = () => {
       console.log('Normalization response:', data);
       
       setNormalizedDatasetId(data.normalized_dataset_id);
+      
+      // ✅ Store the visualization token if provided
+      if (data.visualization_token) {
+        setVisualizationToken(data.visualization_token);
+        localStorage.setItem(`viz_token_${data.normalized_dataset_id}`, data.visualization_token);
+        console.log('Visualization token stored for dataset:', data.normalized_dataset_id);
+      } else {
+        console.warn('No visualization token received from backend');
+      }
+      
       setProcessingStep(2);
       setProcessingStep(3); // Complete
-      setShowAnalyticsButton(true); // ✅ Enable analytics button
+      setUploadComplete(true);
+      
+      // Show success message with record count
+      setPreviewData({
+        totalRows: data.records || 100,
+        message: `Dataset uploaded and normalized successfully! ${data.records || ''} records processed.`
+      });
+      
+      // ✅ Auto-redirect to analytics after 2 seconds
+      setTimeout(() => {
+        navigate(`/analytics?dataset=${data.normalized_dataset_id}`);
+      }, 2000);
+      
+      return data;
       
     } catch (err) {
       console.error('Normalization error:', err);
@@ -223,12 +249,6 @@ const UploadData = () => {
       
       setIsProcessing(false);
       
-      // Optional: Show success message
-      setPreviewData({
-        totalRows: 100,
-        message: "Dataset uploaded and normalized successfully!"
-      });
-      
     } catch (err) {
       console.error('Ingestion error:', err);
       setError(err.message || 'Ingestion failed');
@@ -245,12 +265,13 @@ const UploadData = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const goToDashboard = () => {
-    navigate('/dashboard');
-  };
-
   const goToAnalytics = () => {
     if (normalizedDatasetId) {
+      // Store the token in sessionStorage for the analytics page to use immediately
+      if (visualizationToken) {
+        sessionStorage.setItem('current_viz_token', visualizationToken);
+        sessionStorage.setItem('current_dataset_id', normalizedDatasetId);
+      }
       navigate(`/analytics?dataset=${normalizedDatasetId}`);
     }
   };
@@ -426,7 +447,7 @@ const UploadData = () => {
           )}
 
           {/* Completion */}
-          {processingStep >= processingSteps.length - 1 && (
+          {processingStep >= processingSteps.length - 1 && uploadComplete && (
             <div className="flex items-center gap-3 p-4 rounded-xl bg-green-500/10 border border-green-500/50">
               <CheckCircle2 className="w-5 h-5 text-green-500" />
               <div>
@@ -448,32 +469,27 @@ const UploadData = () => {
               <Eye className="w-5 h-5 text-primary" />
               Upload Successful
             </h3>
+            <span className="text-sm text-muted-foreground">
+              {previewData.totalRows} records
+            </span>
           </div>
           <p className="text-foreground">{previewData.message}</p>
+          {visualizationToken && (
+            <p className="text-xs text-green-500">✓ Visualization token ready</p>
+          )}
         </div>
       )}
 
-      {/* Action buttons */}
+      {/* Action buttons - Only Analytics button after completion */}
       <div className="flex justify-end gap-4">
-        {processingStep >= processingSteps.length - 1 ? (
-          <div className="flex gap-4">
-            <button
-              onClick={goToDashboard}
-              className="flex items-center gap-2 px-6 py-3 rounded-lg font-medium bg-primary text-primary-foreground hover:bg-primary/90 glow-primary transition-all"
-            >
-              <ArrowRight className="w-5 h-5" />
-              Go to Dashboard
-            </button>
-            {showAnalyticsButton && normalizedDatasetId && (
-              <button
-                onClick={goToAnalytics}
-                className="flex items-center gap-2 px-6 py-3 rounded-lg font-medium bg-secondary text-secondary-foreground hover:bg-secondary/90 glow-secondary transition-all"
-              >
-                <BarChart3 className="w-5 h-5" />
-                Go to Analytics
-              </button>
-            )}
-          </div>
+        {uploadComplete && normalizedDatasetId ? (
+          <button
+            onClick={goToAnalytics}
+            className="flex items-center gap-2 px-6 py-3 rounded-lg font-medium bg-secondary text-secondary-foreground hover:bg-secondary/90 glow-secondary transition-all"
+          >
+            <BarChart3 className="w-5 h-5" />
+            View Dataset Analytics
+          </button>
         ) : (
           <>
             <button
