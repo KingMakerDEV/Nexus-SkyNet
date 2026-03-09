@@ -58,8 +58,6 @@ def upload_dataset():
             source_id=int(source_id)
         )
 
-
-
         return jsonify(result), 200
 
     except Exception as e:
@@ -70,18 +68,15 @@ def upload_dataset():
 
 
 # -----------------------------
-# NORMALIZE DATASET
+# NORMALIZE DATASET (UPDATED)
 # -----------------------------
 @ingestion_bp.route("/normalize/<dataset_id>", methods=["POST"])
 @jwt_required
 def normalize_dataset(dataset_id):
-
     try:
-
         service = IngestionService(db)
-
-        result = service.normalize_dataset(dataset_id)
-
+        # Pass user_id to the service method
+        result = service.normalize_dataset(dataset_id, user_id=g.user_id)
         return jsonify(result), 200
 
     except Exception as e:

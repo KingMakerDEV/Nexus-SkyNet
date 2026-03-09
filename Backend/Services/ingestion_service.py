@@ -27,7 +27,6 @@ class IngestionService:
     # -------------------------------------------------
 
     def ingest_user_upload(self, file_content, file_type, filename, user_id, source_id):
-
         try:
             # Validate dataset structure
             parsed_rows = validate_dataset_schema(file_content, file_type)
@@ -64,14 +63,12 @@ class IngestionService:
     # -------------------------------------------------
 
     def ingest_from_api(self, source_id, query, user_id):
-
         try:
             result = self.api_ingestor.ingest_from_api(
                 source_id=source_id,
                 query=query,
                 user_id=user_id
             )
-
             return result
 
         except Exception as e:
@@ -81,17 +78,29 @@ class IngestionService:
             }
 
     # -------------------------------------------------
-    # NORMALIZE DATASET
+    # NORMALIZE DATASET (UPDATED)
     # -------------------------------------------------
 
-    def normalize_dataset(self, dataset_id):
-
+    def normalize_dataset(self, dataset_id, user_id=None):
+        """
+        Normalize a raw dataset and return the normalized dataset ID and visualization token.
+        """
         try:
-            normalized_dataset_id = self.normalization_service.normalize(dataset_id)
+            # Call normalization service (now returns a dict with token)
+            result = self.normalization_service.normalize(dataset_id, user_id)
 
+            if result.get("status") != "success":
+                return {
+                    "status": "error",
+                    "error": result.get("error", "Normalization failed")
+                }
+
+            # Return the full result containing token and records
             return {
                 "status": "success",
-                "normalized_dataset_id": normalized_dataset_id
+                "normalized_dataset_id": result["normalized_dataset_id"],
+                "visualization_token": result.get("visualization_token"),
+                "records": result.get("records", 0)
             }
 
         except Exception as e:

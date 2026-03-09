@@ -102,16 +102,22 @@ class NormalizedDatasetRepository:
         return True
 
     # -------------------------------------------------------
-    # METADATA
+    # METADATA (FIXED)
     # -------------------------------------------------------
 
     def add_normalization_metadata(
         self,
-        dataset_id: str,               # UUID string
+        dataset_id: str,           # normalized dataset UUID
+        raw_dataset_id: int,        # ✅ added parameter
         metadata: Dict[str, Any],
     ) -> None:
+        """
+        Add metadata for a normalized dataset.
+        Requires both normalized_dataset_id and raw_dataset_id.
+        """
         meta = Metadata(
-            normalized_dataset_id=dataset_id,      # ✅ changed from dataset_id
+            raw_dataset_id=raw_dataset_id,              # ✅ now using the passed raw_dataset_id
+            normalized_dataset_id=dataset_id,
             meta_data=metadata,
             created_at=datetime.utcnow(),
         )
