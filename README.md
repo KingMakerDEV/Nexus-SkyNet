@@ -352,7 +352,9 @@ We welcome contributions to **Nexus SkyNet**! Whether it’s fixing bugs, improv
 - **Documentation**: Update README or inline docs if your changes affect usage.  
 - **Respect Branches**:  
   - `main` → stable production branch.  
-  - `nik1` → development branch for new features.  
+  - `nik1` → development branch for new
+  - 'Abhay1'- Frontend design and web app design 
+ features.  
 
 ---
 
